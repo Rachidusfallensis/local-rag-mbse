@@ -19,6 +19,7 @@ venv/
 vectordb/
 .mypy_cache/
 data/
+saved_chats.json
 
 # Distribution / packaging
 dist/
