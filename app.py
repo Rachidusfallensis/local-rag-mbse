@@ -5,6 +5,7 @@ from rag_system import LocalRAGSystem
 import config
 import json
 from datetime import datetime
+from diagram_generator import CapellaDiagramGenerator, DiagramType
 
 # Page configuration
 st.set_page_config(
@@ -105,6 +106,8 @@ def main():
         st.session_state.current_chat_id = None
     if "rag_system" not in st.session_state:
         st.session_state.rag_system = init_rag_system()
+    if "diagram_generator" not in st.session_state:
+        st.session_state.diagram_generator = CapellaDiagramGenerator()
 
     # Layout
     st.title("🏗️ MBSE Assistant")
@@ -152,6 +155,42 @@ def main():
                         st.error("Errors encountered:")
                         for error in results['errors']:
                             st.write(f"- {error}")
+
+        # Diagram Generation
+        with st.expander("📊 Generate MBSE Diagram"):
+            st.markdown("""
+            Create a lightweight Capella diagram using natural language description.
+            Choose the diagram type and describe what you want to create.
+            """)
+            
+            diagram_type = st.selectbox(
+                "Diagram Type",
+                [dt.value for dt in DiagramType],
+                key="diagram_type"
+            )
+            
+            diagram_description = st.text_area(
+                "Describe your diagram",
+                placeholder="Example: Create a system with two components connected by an interface",
+                key="diagram_description"
+            )
+            
+            if st.button("Generate Diagram"):
+                if diagram_description:
+                    with st.spinner("Generating diagram..."):
+                        # Convert string value back to enum
+                        selected_type = next(dt for dt in DiagramType if dt.value == diagram_type)
+                        diagram = st.session_state.diagram_generator.generate_diagram(
+                            diagram_description, selected_type
+                        )
+                        # Save diagram to temp file and display
+                        diagram_path = "temp_diagram"
+                        diagram.render(diagram_path, format="png", cleanup=True)
+                        st.image(f"{diagram_path}.png")
+                        # Cleanup
+                        os.remove(f"{diagram_path}.png")
+                else:
+                    st.warning("Please provide a description for your diagram.")
 
         # Chat Interface
         if st.session_state.current_chat_id:
