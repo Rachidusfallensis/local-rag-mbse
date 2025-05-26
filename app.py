@@ -14,34 +14,73 @@ st.set_page_config(
     layout="wide"
 )
 
-# Custom CSS for better UI
+# Custom CSS for better UI and scrolling behavior
 st.markdown("""
 <style>
     .chat-container {
         border-radius: 10px;
         padding: 10px;
         margin: 10px 0;
+        max-height: 600px;
+        overflow-y: auto;
     }
     .user-message {
         background-color: #e6f3ff;
         text-align: right;
+        padding: 10px;
+        margin: 5px 0;
+        border-radius: 10px;
     }
     .assistant-message {
         background-color: #f0f2f6;
+        padding: 10px;
+        margin: 5px 0;
+        border-radius: 10px;
     }
     .chat-input {
-        border-radius: 20px;
-        border: 1px solid #ddd;
+        position: sticky;
+        bottom: 0;
+        background: white;
+        padding: 10px;
+        border-top: 1px solid #ddd;
     }
-    .new-chat-button {
-        border-radius: 20px;
-        padding: 10px 20px;
-    }
-    .chat-list {
-        max-height: 600px;
+    .chat-messages {
         overflow-y: auto;
+        max-height: calc(100vh - 200px);
+        padding-bottom: 100px;
+    }
+    .stApp {
+        height: 100vh;
     }
 </style>
+
+<script>
+    // Function to scroll to bottom of chat
+    function scrollToBottom() {
+        const messages = document.querySelector('.chat-messages');
+        if (messages) {
+            messages.scrollTop = messages.scrollHeight;
+        }
+    }
+    
+    // Call scrollToBottom when new messages are added
+    const observer = new MutationObserver((mutations) => {
+        mutations.forEach((mutation) => {
+            if (mutation.addedNodes.length) {
+                scrollToBottom();
+            }
+        });
+    });
+    
+    // Start observing the chat messages container
+    window.addEventListener('load', () => {
+        const messages = document.querySelector('.chat-messages');
+        if (messages) {
+            observer.observe(messages, { childList: true, subtree: true });
+            scrollToBottom();
+        }
+    });
+</script>
 """, unsafe_allow_html=True)
 
 # Arcadia methodology reference links
@@ -249,18 +288,26 @@ def main():
             
             current_chat = st.session_state.chats[st.session_state.current_chat_id]
             
-            # Display chat messages
-            for message in current_chat["messages"]:
-                with st.chat_message(message["role"]):
-                    st.markdown(message["content"])
-                    if "context" in message and message["role"] == "assistant":
-                        with st.expander("View Context Sources"):
-                            for i, doc in enumerate(message["context"]):
-                                st.write(f"**Source {i+1}:** {doc['metadata'].get('source', 'Unknown')}")
-                                st.write(f"**Content Preview:** {doc['content'][:200]}...")
-                                st.divider()
+            # Create a container for chat messages with auto-scroll
+            chat_container = st.container()
+            with chat_container:
+                st.markdown('<div class="chat-messages">', unsafe_allow_html=True)
+                
+                # Display chat messages
+                for message in current_chat["messages"]:
+                    with st.chat_message(message["role"]):
+                        st.markdown(message["content"])
+                        if "context" in message and message["role"] == "assistant":
+                            with st.expander("View Context Sources"):
+                                for i, doc in enumerate(message["context"]):
+                                    st.write(f"**Source {i+1}:** {doc['metadata'].get('source', 'Unknown')}")
+                                    st.write(f"**Content Preview:** {doc['content'][:200]}...")
+                                    st.divider()
+                
+                st.markdown('</div>', unsafe_allow_html=True)
             
-            # Chat input
+            # Chat input at the bottom
+            st.markdown('<div class="chat-input">', unsafe_allow_html=True)
             if prompt := st.chat_input("Ask about your MBSE models..."):
                 # Update chat title if it's the first message
                 if not current_chat["messages"]:
@@ -294,6 +341,7 @@ def main():
                 
                 # Save chats
                 save_chats(st.session_state.chats)
+            st.markdown('</div>', unsafe_allow_html=True)
         else:
             st.info("👈 Create a new chat or select an existing one to start")
 
