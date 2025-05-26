@@ -52,6 +52,38 @@ st.markdown("""
     .stApp {
         height: 100vh;
     }
+    .diagram-container {
+        background: white;
+        border-radius: 10px;
+        padding: 20px;
+        margin: 10px 0;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .diagram-explanation {
+        background: #f8f9fa;
+        border-left: 4px solid #4CAF50;
+        padding: 15px;
+        margin: 10px 0;
+        border-radius: 0 10px 10px 0;
+    }
+    
+    /* Make diagram section responsive */
+    .diagram-section {
+        transition: all 0.3s ease;
+        min-height: 200px;
+    }
+    
+    .diagram-section.expanded {
+        min-height: 600px;
+    }
+    
+    /* Improve image display */
+    .diagram-image {
+        max-width: 100%;
+        height: auto;
+        margin: 10px 0;
+    }
 </style>
 
 <script>
@@ -196,7 +228,11 @@ def main():
                             st.write(f"- {error}")
 
         # Diagram Generation
-        with st.expander("📊 Generate MBSE Diagram"):
+        diagram_section = st.container()
+        with diagram_section:
+            st.markdown('<div class="diagram-section">', unsafe_allow_html=True)
+            
+            st.subheader("📊 Generate MBSE Diagram")
             st.markdown("""
             Create a lightweight overview diagram based on your project documents.
             The system will analyze your documents and suggest the most important elements
@@ -235,7 +271,11 @@ def main():
                 key="diagram_description"
             )
             
-            if st.button("Generate Overview Diagram"):
+            generate_col1, generate_col2 = st.columns([1, 3])
+            with generate_col1:
+                generate_button = st.button("Generate Overview Diagram")
+            
+            if generate_button:
                 if diagram_description:
                     with st.spinner("Analyzing documents and generating overview diagram..."):
                         try:
@@ -246,22 +286,31 @@ def main():
                                 selected_type,
                                 max_elements=max_elements
                             )
-                            # Save diagram to temp file and display
+                            
+                            # Create a container for the diagram and its explanation
+                            st.markdown('<div class="diagram-container">', unsafe_allow_html=True)
+                            
+                            # Save and display diagram
                             diagram_path = "temp_diagram"
                             diagram.render(diagram_path, format="png", cleanup=True)
                             
-                            # Display diagram with explanation
-                            st.image(f"{diagram_path}.png")
+                            # Display diagram with proper styling
+                            st.markdown('<div class="diagram-image">', unsafe_allow_html=True)
+                            st.image(f"{diagram_path}.png", use_column_width=True)
+                            st.markdown('</div>', unsafe_allow_html=True)
                             
-                            # Show explanation in an expander
-                            with st.expander("📝 Diagram Explanation", expanded=True):
-                                st.markdown("""
-                                This overview diagram shows:
-                                - The most important elements based on document analysis
-                                - Elements grouped by type (activities, components, etc.)
-                                - Key relationships between elements
-                                - Tooltips with additional details (hover over elements)
-                                """)
+                            # Show explanation without using expander
+                            st.markdown('<div class="diagram-explanation">', unsafe_allow_html=True)
+                            st.markdown("""
+                            **Diagram Overview:**
+                            - The most important elements based on document analysis
+                            - Elements grouped by type (activities, components, etc.)
+                            - Key relationships between elements
+                            - Tooltips with additional details (hover over elements)
+                            """)
+                            st.markdown('</div>', unsafe_allow_html=True)
+                            
+                            st.markdown('</div>', unsafe_allow_html=True)
                             
                             # Cleanup
                             os.remove(f"{diagram_path}.png")
@@ -277,6 +326,8 @@ def main():
                                 """)
                 else:
                     st.warning("Please provide a description for your diagram.")
+            
+            st.markdown('</div>', unsafe_allow_html=True)
 
         # Chat Interface
         if st.session_state.current_chat_id:
