@@ -159,43 +159,74 @@ def main():
         # Diagram Generation
         with st.expander("📊 Generate MBSE Diagram"):
             st.markdown("""
-            Create a lightweight Capella diagram using:
-            1. Natural language description
-            2. Context from your uploaded documents
-            
-            The system will analyze your documents and suggest diagram elements based on the content.
+            Create a lightweight overview diagram based on your project documents.
+            The system will analyze your documents and suggest the most important elements
+            to include in an initial draft diagram.
             """)
             
-            diagram_type = st.selectbox(
-                "Diagram Type",
-                [dt.value for dt in DiagramType],
-                key="diagram_type"
-            )
+            col_left, col_right = st.columns(2)
+            
+            with col_left:
+                diagram_type = st.selectbox(
+                    "Diagram Type",
+                    [dt.value for dt in DiagramType],
+                    key="diagram_type"
+                )
+                
+                max_elements = st.slider(
+                    "Maximum Elements",
+                    min_value=3,
+                    max_value=15,
+                    value=7,
+                    help="Maximum number of elements to include in the overview diagram"
+                )
+            
+            with col_right:
+                st.markdown("""
+                **Diagram Focus Areas:**
+                - High-level overview
+                - Key elements and relationships
+                - Most frequently mentioned components
+                - Important interfaces and connections
+                """)
             
             diagram_description = st.text_area(
                 "Describe what to include in the diagram",
-                placeholder="Example: Show the operational activities related to user authentication",
+                placeholder="Example: Show the main operational activities related to user authentication and system startup",
                 key="diagram_description"
             )
             
-            if st.button("Generate Diagram"):
+            if st.button("Generate Overview Diagram"):
                 if diagram_description:
-                    with st.spinner("Analyzing documents and generating diagram..."):
+                    with st.spinner("Analyzing documents and generating overview diagram..."):
                         try:
                             # Convert string value back to enum
                             selected_type = next(dt for dt in DiagramType if dt.value == diagram_type)
                             diagram = st.session_state.diagram_generator.generate_diagram(
-                                diagram_description, selected_type
+                                diagram_description, 
+                                selected_type,
+                                max_elements=max_elements
                             )
                             # Save diagram to temp file and display
                             diagram_path = "temp_diagram"
                             diagram.render(diagram_path, format="png", cleanup=True)
+                            
+                            # Display diagram with explanation
                             st.image(f"{diagram_path}.png")
+                            
+                            # Show explanation in an expander
+                            with st.expander("📝 Diagram Explanation", expanded=True):
+                                st.markdown("""
+                                This overview diagram shows:
+                                - The most important elements based on document analysis
+                                - Elements grouped by type (activities, components, etc.)
+                                - Key relationships between elements
+                                - Tooltips with additional details (hover over elements)
+                                """)
+                            
                             # Cleanup
                             os.remove(f"{diagram_path}.png")
                             
-                            # Show explanation
-                            st.info("💡 This diagram was generated based on the analysis of your uploaded documents and the Arcadia methodology.")
                         except Exception as e:
                             st.error(f"Error generating diagram: {str(e)}")
                             if "Graphviz executables" in str(e):

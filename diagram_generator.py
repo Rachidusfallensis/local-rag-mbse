@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from typing import List, Dict, Optional, Tuple, Any
 from enum import Enum
 import re
+from collections import defaultdict
 
 class DiagramType(Enum):
     OAB = "Operational Activity Breakdown"
@@ -25,6 +26,36 @@ class DiagramElement:
     description: Optional[str] = None
     properties: Dict[str, str] = field(default_factory=dict)
     connections: List[str] = field(default_factory=list)
+    importance: float = 1.0  # Importance score for overview filtering
+
+class DiagramStyle:
+    """Styling configuration for diagrams"""
+    COLORS = {
+        "actor": "#E8F4F9",      # Light blue
+        "activity": "#F9F3E8",   # Light orange
+        "function": "#E8F9E9",   # Light green
+        "component": "#F9E8E8",  # Light red
+        "interface": "#F0E8F9",  # Light purple
+        "requirement": "#F9F9E8" # Light yellow
+    }
+    
+    FONTS = {
+        "family": "Arial",
+        "size": "12"
+    }
+    
+    EDGE_STYLES = {
+        "splines": "ortho",      # Orthogonal edges
+        "nodesep": "0.5",        # Node separation
+        "ranksep": "0.7"         # Rank separation
+    }
+    
+    NODE_STYLES = {
+        "style": "filled",
+        "fontname": FONTS["family"],
+        "fontsize": FONTS["size"],
+        "margin": "0.3,0.1"
+    }
 
 class DiagramTemplate:
     def __init__(self, diagram_type: DiagramType):
@@ -50,28 +81,126 @@ class CapellaDiagramGenerator:
             DiagramType.PAB: self._create_pab_template
         }
     
-    def generate_diagram(self, description: str, diagram_type: DiagramType) -> graphviz.Digraph:
-        """Generate a diagram based on natural language description and RAG context"""
-        # Create diagram using graphviz
+    def generate_diagram(self, description: str, diagram_type: DiagramType, max_elements: int = 7) -> graphviz.Digraph:
+        """Generate an overview diagram based on natural language description and RAG context"""
+        # Create diagram using graphviz with enhanced styling
         dot = graphviz.Digraph(comment=diagram_type.value)
-        dot.attr(rankdir='TB')
+        self._apply_diagram_styles(dot)
         
         # Parse description and create elements using RAG system
-        elements = self._parse_description(description, diagram_type)
+        all_elements = self._parse_description(description, diagram_type)
         
-        # Add elements to diagram
-        for element in elements:
-            dot.node(element.id, 
-                    f"{element.name}\\n{element.type}",
-                    shape=self._get_shape_for_type(element.type))
+        # Filter elements for overview
+        overview_elements = self._filter_for_overview(all_elements, max_elements)
         
-        # Add connections
-        for element in elements:
-            for conn in element.connections:
-                if conn in [e.id for e in elements]:
-                    dot.edge(element.id, conn, "")
+        # Create clusters for organization
+        clusters = self._create_clusters(overview_elements)
+        
+        # Add clusters and elements to diagram
+        for cluster_name, elements in clusters.items():
+            with dot.subgraph(name=f"cluster_{cluster_name}") as c:
+                c.attr(label=cluster_name, style="rounded", bgcolor="#FAFAFA")
+                for element in elements:
+                    self._add_node(c, element)
+        
+        # Add connections between elements
+        self._add_connections(dot, overview_elements)
         
         return dot
+    
+    def _apply_diagram_styles(self, dot: graphviz.Digraph):
+        """Apply enhanced styling to the diagram"""
+        # Graph attributes
+        dot.attr(rankdir="TB", splines=DiagramStyle.EDGE_STYLES["splines"])
+        dot.attr(nodesep=DiagramStyle.EDGE_STYLES["nodesep"])
+        dot.attr(ranksep=DiagramStyle.EDGE_STYLES["ranksep"])
+        
+        # Default node attributes
+        dot.attr("node", **DiagramStyle.NODE_STYLES)
+        
+        # Edge attributes
+        dot.attr("edge", color="#666666", penwidth="1.5", arrowsize="0.8")
+    
+    def _add_node(self, graph: graphviz.Digraph, element: DiagramElement):
+        """Add a styled node to the graph"""
+        label = f"{element.name}"
+        if element.description:
+            # Add description as tooltip
+            tooltip = element.description[:100] + "..." if len(element.description) > 100 else element.description
+        else:
+            tooltip = element.name
+            
+        graph.node(element.id,
+                  label,
+                  shape=self._get_shape_for_type(element.type),
+                  fillcolor=DiagramStyle.COLORS.get(element.type, "#FFFFFF"),
+                  tooltip=tooltip)
+    
+    def _filter_for_overview(self, elements: List[DiagramElement], max_elements: int) -> List[DiagramElement]:
+        """Filter elements to show only the most important ones for overview"""
+        # Sort elements by importance
+        sorted_elements = sorted(elements, key=lambda x: x.importance, reverse=True)
+        
+        # Take top N elements
+        return sorted_elements[:max_elements]
+    
+    def _create_clusters(self, elements: List[DiagramElement]) -> Dict[str, List[DiagramElement]]:
+        """Group elements into clusters based on their type"""
+        clusters = defaultdict(list)
+        for element in elements:
+            clusters[element.type.capitalize()].append(element)
+        return clusters
+    
+    def _add_connections(self, dot: graphviz.Digraph, elements: List[DiagramElement]):
+        """Add styled connections between elements"""
+        element_ids = {e.id for e in elements}
+        for element in elements:
+            for conn in element.connections:
+                if conn in element_ids:  # Only add connection if both elements are visible
+                    dot.edge(element.id, conn, "", constraint="true")
+    
+    def _calculate_importance(self, element: DiagramElement, context_docs: List[Dict[str, Any]]) -> float:
+        """Calculate importance score for an element based on context"""
+        importance = 1.0
+        
+        # Increase importance based on frequency in documents
+        mentions = sum(1 for doc in context_docs if element.name.lower() in doc['content'].lower())
+        importance += mentions * 0.2
+        
+        # Increase importance based on connections
+        importance += len(element.connections) * 0.1
+        
+        # Increase importance if it has a description
+        if element.description:
+            importance += 0.3
+            
+        return importance
+
+    def _extract_elements_from_text(self, text: str, element_type: str, context_docs: List[Dict[str, Any]]) -> List[DiagramElement]:
+        """Extract elements of a specific type from text with improved parsing"""
+        elements = []
+        # Enhanced pattern to catch more complex names and descriptions
+        pattern = r'(?:^|\n)([A-Z][a-zA-Z0-9\s]+?)(?:\s*:\s*([^\.]+))?(?:\.|$)'
+        matches = re.finditer(pattern, text)
+        
+        for idx, match in enumerate(matches):
+            name = match.group(1).strip()
+            desc = match.group(2).strip() if match.group(2) else None
+            
+            # Create element
+            element = DiagramElement(
+                id=f"{element_type.lower()}_{idx}",
+                name=name,
+                type=element_type,
+                description=desc
+            )
+            
+            # Calculate importance
+            element.importance = self._calculate_importance(element, context_docs)
+            
+            elements.append(element)
+        
+        return elements
     
     def _parse_description(self, description: str, diagram_type: DiagramType) -> List[DiagramElement]:
         """Parse natural language description into diagram elements using RAG system"""
@@ -117,66 +246,46 @@ class CapellaDiagramGenerator:
         }
         return queries[diagram_type] + description
     
-    def _extract_elements_from_text(self, text: str, element_type: str) -> List[DiagramElement]:
-        """Extract elements of a specific type from text"""
-        elements = []
-        # Use regex to find potential elements
-        pattern = r'([A-Z][a-zA-Z\s]+)(?:\s*:\s*([^\.]+))?'
-        matches = re.finditer(pattern, text)
-        
-        for idx, match in enumerate(matches):
-            name = match.group(1).strip()
-            desc = match.group(2).strip() if match.group(2) else None
-            element_id = f"{element_type.lower()}_{idx}"
-            elements.append(DiagramElement(
-                id=element_id,
-                name=name,
-                type=element_type,
-                description=desc
-            ))
-        
-        return elements
-    
     def _extract_operational_activities(self, context_docs: List[Dict[str, Any]]) -> List[DiagramElement]:
         """Extract operational activities from context documents"""
         elements = []
         for doc in context_docs:
-            elements.extend(self._extract_elements_from_text(doc['content'], "activity"))
+            elements.extend(self._extract_elements_from_text(doc['content'], "activity", context_docs))
         return elements
     
     def _extract_operational_context(self, context_docs: List[Dict[str, Any]]) -> List[DiagramElement]:
         """Extract operational context elements from context documents"""
         elements = []
         for doc in context_docs:
-            elements.extend(self._extract_elements_from_text(doc['content'], "actor"))
+            elements.extend(self._extract_elements_from_text(doc['content'], "actor", context_docs))
         return elements
     
     def _extract_system_activities(self, context_docs: List[Dict[str, Any]]) -> List[DiagramElement]:
         """Extract system activities from context documents"""
         elements = []
         for doc in context_docs:
-            elements.extend(self._extract_elements_from_text(doc['content'], "activity"))
+            elements.extend(self._extract_elements_from_text(doc['content'], "activity", context_docs))
         return elements
     
     def _extract_system_functions(self, context_docs: List[Dict[str, Any]]) -> List[DiagramElement]:
         """Extract system functions from context documents"""
         elements = []
         for doc in context_docs:
-            elements.extend(self._extract_elements_from_text(doc['content'], "function"))
+            elements.extend(self._extract_elements_from_text(doc['content'], "function", context_docs))
         return elements
     
     def _extract_logical_components(self, context_docs: List[Dict[str, Any]]) -> List[DiagramElement]:
         """Extract logical components from context documents"""
         elements = []
         for doc in context_docs:
-            elements.extend(self._extract_elements_from_text(doc['content'], "component"))
+            elements.extend(self._extract_elements_from_text(doc['content'], "component", context_docs))
         return elements
     
     def _extract_physical_components(self, context_docs: List[Dict[str, Any]]) -> List[DiagramElement]:
         """Extract physical components from context documents"""
         elements = []
         for doc in context_docs:
-            elements.extend(self._extract_elements_from_text(doc['content'], "component"))
+            elements.extend(self._extract_elements_from_text(doc['content'], "component", context_docs))
         return elements
     
     def _get_shape_for_type(self, element_type: str) -> str:
