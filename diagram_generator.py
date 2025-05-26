@@ -1,12 +1,13 @@
 """
 Diagram Generator for Lightweight Capella Diagrams
-Supports generation of initial diagrams based on natural language descriptions
+Supports generation of initial diagrams based on natural language descriptions and RAG system
 """
 
 import graphviz
 from dataclasses import dataclass, field
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Tuple, Any
 from enum import Enum
+import re
 
 class DiagramType(Enum):
     OAB = "Operational Activity Breakdown"
@@ -38,7 +39,8 @@ class DiagramTemplate:
         self.connections.append((from_id, to_id, label))
 
 class CapellaDiagramGenerator:
-    def __init__(self):
+    def __init__(self, rag_system=None):
+        self.rag_system = rag_system
         self.templates = {
             DiagramType.OAB: self._create_oab_template,
             DiagramType.OCB: self._create_ocb_template,
@@ -49,16 +51,13 @@ class CapellaDiagramGenerator:
         }
     
     def generate_diagram(self, description: str, diagram_type: DiagramType) -> graphviz.Digraph:
-        """Generate a diagram based on natural language description"""
+        """Generate a diagram based on natural language description and RAG context"""
         # Create diagram using graphviz
         dot = graphviz.Digraph(comment=diagram_type.value)
         dot.attr(rankdir='TB')
         
-        # Parse description and create elements
+        # Parse description and create elements using RAG system
         elements = self._parse_description(description, diagram_type)
-        
-        # Apply template
-        template = self.templates[diagram_type]()
         
         # Add elements to diagram
         for element in elements:
@@ -67,16 +66,118 @@ class CapellaDiagramGenerator:
                     shape=self._get_shape_for_type(element.type))
         
         # Add connections
-        for conn in template.connections:
-            dot.edge(conn[0], conn[1], conn[2])
+        for element in elements:
+            for conn in element.connections:
+                if conn in [e.id for e in elements]:
+                    dot.edge(element.id, conn, "")
         
         return dot
     
     def _parse_description(self, description: str, diagram_type: DiagramType) -> List[DiagramElement]:
-        """Parse natural language description into diagram elements"""
-        # TODO: Implement NLP parsing
-        # For now, return template elements
-        return self.templates[diagram_type]().elements
+        """Parse natural language description into diagram elements using RAG system"""
+        elements = []
+        
+        if self.rag_system:
+            # Create a context-aware query based on diagram type
+            query = self._create_rag_query(description, diagram_type)
+            
+            # Get relevant context from RAG system
+            response, context_docs = self.rag_system.chat(query)
+            
+            # Extract elements based on diagram type
+            if diagram_type == DiagramType.OAB:
+                elements = self._extract_operational_activities(context_docs)
+            elif diagram_type == DiagramType.OCB:
+                elements = self._extract_operational_context(context_docs)
+            elif diagram_type == DiagramType.SAB:
+                elements = self._extract_system_activities(context_docs)
+            elif diagram_type == DiagramType.SFB:
+                elements = self._extract_system_functions(context_docs)
+            elif diagram_type == DiagramType.LAB:
+                elements = self._extract_logical_components(context_docs)
+            elif diagram_type == DiagramType.PAB:
+                elements = self._extract_physical_components(context_docs)
+        
+        # If no elements found, use template
+        if not elements:
+            template = self.templates[diagram_type]()
+            elements = template.elements
+        
+        return elements
+    
+    def _create_rag_query(self, description: str, diagram_type: DiagramType) -> str:
+        """Create a RAG query based on diagram type"""
+        queries = {
+            DiagramType.OAB: "Extract operational activities and their relationships from: ",
+            DiagramType.OCB: "Identify system actors and their interactions from: ",
+            DiagramType.SAB: "List system activities and their dependencies from: ",
+            DiagramType.SFB: "Extract system functions and their hierarchy from: ",
+            DiagramType.LAB: "Identify logical components and their interfaces from: ",
+            DiagramType.PAB: "Extract physical components and their connections from: "
+        }
+        return queries[diagram_type] + description
+    
+    def _extract_elements_from_text(self, text: str, element_type: str) -> List[DiagramElement]:
+        """Extract elements of a specific type from text"""
+        elements = []
+        # Use regex to find potential elements
+        pattern = r'([A-Z][a-zA-Z\s]+)(?:\s*:\s*([^\.]+))?'
+        matches = re.finditer(pattern, text)
+        
+        for idx, match in enumerate(matches):
+            name = match.group(1).strip()
+            desc = match.group(2).strip() if match.group(2) else None
+            element_id = f"{element_type.lower()}_{idx}"
+            elements.append(DiagramElement(
+                id=element_id,
+                name=name,
+                type=element_type,
+                description=desc
+            ))
+        
+        return elements
+    
+    def _extract_operational_activities(self, context_docs: List[Dict[str, Any]]) -> List[DiagramElement]:
+        """Extract operational activities from context documents"""
+        elements = []
+        for doc in context_docs:
+            elements.extend(self._extract_elements_from_text(doc['content'], "activity"))
+        return elements
+    
+    def _extract_operational_context(self, context_docs: List[Dict[str, Any]]) -> List[DiagramElement]:
+        """Extract operational context elements from context documents"""
+        elements = []
+        for doc in context_docs:
+            elements.extend(self._extract_elements_from_text(doc['content'], "actor"))
+        return elements
+    
+    def _extract_system_activities(self, context_docs: List[Dict[str, Any]]) -> List[DiagramElement]:
+        """Extract system activities from context documents"""
+        elements = []
+        for doc in context_docs:
+            elements.extend(self._extract_elements_from_text(doc['content'], "activity"))
+        return elements
+    
+    def _extract_system_functions(self, context_docs: List[Dict[str, Any]]) -> List[DiagramElement]:
+        """Extract system functions from context documents"""
+        elements = []
+        for doc in context_docs:
+            elements.extend(self._extract_elements_from_text(doc['content'], "function"))
+        return elements
+    
+    def _extract_logical_components(self, context_docs: List[Dict[str, Any]]) -> List[DiagramElement]:
+        """Extract logical components from context documents"""
+        elements = []
+        for doc in context_docs:
+            elements.extend(self._extract_elements_from_text(doc['content'], "component"))
+        return elements
+    
+    def _extract_physical_components(self, context_docs: List[Dict[str, Any]]) -> List[DiagramElement]:
+        """Extract physical components from context documents"""
+        elements = []
+        for doc in context_docs:
+            elements.extend(self._extract_elements_from_text(doc['content'], "component"))
+        return elements
     
     def _get_shape_for_type(self, element_type: str) -> str:
         """Get appropriate shape for element type"""

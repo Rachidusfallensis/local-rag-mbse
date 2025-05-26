@@ -33,6 +33,17 @@ A powerful Model-Based Systems Engineering (MBSE) assistant that leverages Local
 
 - Python 3.8 or higher
 - [Ollama](https://ollama.ai) installed and running
+- [Graphviz](https://graphviz.org/download/) installed (required for diagram generation)
+  ```bash
+  # macOS
+  brew install graphviz
+
+  # Ubuntu/Debian
+  sudo apt-get install graphviz
+
+  # Windows
+  choco install graphviz
+  ```
 - Virtual environment management tools
 
 ## Installation 🛠️

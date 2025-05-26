@@ -107,7 +107,7 @@ def main():
     if "rag_system" not in st.session_state:
         st.session_state.rag_system = init_rag_system()
     if "diagram_generator" not in st.session_state:
-        st.session_state.diagram_generator = CapellaDiagramGenerator()
+        st.session_state.diagram_generator = CapellaDiagramGenerator(st.session_state.rag_system)
 
     # Layout
     st.title("🏗️ MBSE Assistant")
@@ -159,8 +159,11 @@ def main():
         # Diagram Generation
         with st.expander("📊 Generate MBSE Diagram"):
             st.markdown("""
-            Create a lightweight Capella diagram using natural language description.
-            Choose the diagram type and describe what you want to create.
+            Create a lightweight Capella diagram using:
+            1. Natural language description
+            2. Context from your uploaded documents
+            
+            The system will analyze your documents and suggest diagram elements based on the content.
             """)
             
             diagram_type = st.selectbox(
@@ -170,25 +173,38 @@ def main():
             )
             
             diagram_description = st.text_area(
-                "Describe your diagram",
-                placeholder="Example: Create a system with two components connected by an interface",
+                "Describe what to include in the diagram",
+                placeholder="Example: Show the operational activities related to user authentication",
                 key="diagram_description"
             )
             
             if st.button("Generate Diagram"):
                 if diagram_description:
-                    with st.spinner("Generating diagram..."):
-                        # Convert string value back to enum
-                        selected_type = next(dt for dt in DiagramType if dt.value == diagram_type)
-                        diagram = st.session_state.diagram_generator.generate_diagram(
-                            diagram_description, selected_type
-                        )
-                        # Save diagram to temp file and display
-                        diagram_path = "temp_diagram"
-                        diagram.render(diagram_path, format="png", cleanup=True)
-                        st.image(f"{diagram_path}.png")
-                        # Cleanup
-                        os.remove(f"{diagram_path}.png")
+                    with st.spinner("Analyzing documents and generating diagram..."):
+                        try:
+                            # Convert string value back to enum
+                            selected_type = next(dt for dt in DiagramType if dt.value == diagram_type)
+                            diagram = st.session_state.diagram_generator.generate_diagram(
+                                diagram_description, selected_type
+                            )
+                            # Save diagram to temp file and display
+                            diagram_path = "temp_diagram"
+                            diagram.render(diagram_path, format="png", cleanup=True)
+                            st.image(f"{diagram_path}.png")
+                            # Cleanup
+                            os.remove(f"{diagram_path}.png")
+                            
+                            # Show explanation
+                            st.info("💡 This diagram was generated based on the analysis of your uploaded documents and the Arcadia methodology.")
+                        except Exception as e:
+                            st.error(f"Error generating diagram: {str(e)}")
+                            if "Graphviz executables" in str(e):
+                                st.warning("""
+                                Graphviz is not installed. Please install it:
+                                - macOS: `brew install graphviz`
+                                - Ubuntu: `sudo apt-get install graphviz`
+                                - Windows: `choco install graphviz`
+                                """)
                 else:
                     st.warning("Please provide a description for your diagram.")
 
