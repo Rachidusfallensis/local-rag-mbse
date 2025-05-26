@@ -296,7 +296,7 @@ def main():
                             
                             # Display diagram with proper styling
                             st.markdown('<div class="diagram-image">', unsafe_allow_html=True)
-                            st.image(f"{diagram_path}.png", use_column_width=True)
+                            st.image(f"{diagram_path}.png", use_container_width=True)
                             st.markdown('</div>', unsafe_allow_html=True)
                             
                             # Show explanation without using expander
